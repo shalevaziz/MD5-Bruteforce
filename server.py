@@ -1,5 +1,3 @@
-#import select
-import imp
 from socket import *
 import time
 from threading import Thread
@@ -22,7 +20,6 @@ def get_prefix(length):
         else:
             prefix = prefix[:-1]+chr(ord(prefix[-1]) + 1)
 
-
 class Server:
     def __init__(self, md5_hash, client_length=5, total_length=8):
         self.queue = []
@@ -39,7 +36,6 @@ class Server:
         server_soc.bind(('127.0.0.1', 25565))
         server_soc.listen(2)
         connections = []
-        Threads = []
         print("Server started")
         while not self.found:
             try:
@@ -93,11 +89,9 @@ class Server:
                 self.queue.append(cur_work)
                 break
 
-
 def main():
     server = Server("900150983cd24fb0d6963f7d28e17f72")
     print(server.mainloop())
-
 
 if __name__ == '__main__':
     main()
