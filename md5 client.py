@@ -1,18 +1,16 @@
-from concurrent.futures import thread
-from errno import ENOMSG
 import socket
 from hashlib import md5
 from threading import Thread
-
+from multiprocessing import Process
 FOUND = False
 ANSWER = ''
 data = None
 s = None
 
 def ServerConnect():
-    global FOUND, data
+    global FOUND, data, s
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = ('10.30.58.40', 25565)
+    server_address = ('127.0.0.1', 25565)
     s.connect(server_address)
     print("Connected")
     s.send("Hello".encode())
@@ -65,7 +63,7 @@ def engine(hash,prefix,num):
         if HashChecking(hash, prefix,start):
             FOUND = True
             ANSWER = prefix + "".join(start)
-            s.sendall(f"found, {ANSWER}".encode())
+            s.sendall(f"found,{ANSWER}".encode())
         start = StrUp(start)
         if start == ['a'] * num: return FOUND
     

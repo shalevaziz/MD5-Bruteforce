@@ -23,7 +23,7 @@ def get_prefix(length):
 
 
 class Server:
-    def __init__(self, md5_hash, client_length=5, total_length=8):
+    def __init__(self, md5_hash, client_length=5, total_length=8, ip = '0.0.0.0', port = 25565):
         self.queue = []
         self.client_length = client_length
         self.total_length = total_length
@@ -31,23 +31,35 @@ class Server:
         self.md5_hash = md5_hash
         self.found = False
         self.passwd = None
+        self.connections = {}
+        self.addresses = []
+        self.disconnected = []
+        self.cur_work = {}
+        self.last_seen = {}
+        self.threads = {}
+        self.ip = ip
+        self.port = port
+
 
     def mainloop(self):
         server_soc = socket()
         server_soc.setblocking(False)
-        server_soc.bind(('0.0.0.0', 25565))
+        server_soc.bind((self.ip, self.port))
         server_soc.listen(2)
-        connections = []
         print("Server started")
         while not self.found:
             try:
                 cli_soc, addr = server_soc.accept()
-                connections.append(cli_soc)
-                Thread(target=self.handle_client, args=(cli_soc, addr)).start()
+                self.connections[addr] = cli_soc
+                self.addresses.append(addr)
+                self.last_seen[addr] = time.time()
+                self.cur_work[addr] = ""
+                self.threads[addr] = Thread(target=self.handle_client, args=(cli_soc, addr))
+                self.threads[addr].start()
             except:
                 pass
 
-        for soc in connections:
+        for soc in self.connections:
             try:
                 soc.send("end".encode())
             except:
@@ -56,7 +68,8 @@ class Server:
         t = Thread(target = self.playsound)
         t.start()
         time.sleep(0.001)
-        for soc in connections:
+
+        for soc in self.connections.values():
             soc.close()
 
         server_soc.close()
@@ -69,26 +82,40 @@ class Server:
         mixer.music.play()
         time.sleep(47)
 
+    def close_conn(self, addr):
+        print("connection {addr} closed".format(addr=addr))
+        self.disconnected.append(addr)
+        self.connections[addr].close()
+        del self.connections[addr]
+        self.addresses.remove(addr)
+        del self.last_seen[addr]
+        del self.cur_work[addr]
+        
+    def get_disconnects(self):
+        disconnects = self.disconnected
+        self.disconnected = []
+        return disconnects
+        
     def handle_client(self, conn, addr):
         conn.settimeout(9999.0)
         conn.setblocking(True)
         print("Client {addr} connected".format(addr = addr))
         msg = conn.recv(4096).decode()
-        cur_work = ""
 
         while msg != "Hello":
             try:
                 msg = conn.recv(4096).decode()
             except:
-                print("connection {addr} closed".format(addr=addr))
-                conn.close()
+                self.close_conn(addr)
                 return
 
-
         conn.send("ok".encode())
+        self.last_seen[addr] = time.time()
+
         while True:
             try:
                 msg = conn.recv(4096).decode()
+                self.last_seen[addr] = time.time()
                 if msg == "ready":
                     print("Client {addr} ready".format(addr=addr))
                     while self.queue == []:
@@ -97,8 +124,8 @@ class Server:
                         except:
                             time.sleep(0.001)
 
-                    cur_work = self.queue.pop()
-                    msg = '{0},{1},{2}'.format(self.md5_hash, cur_work, self.client_length)
+                    self.cur_work[addr] = self.queue.pop()
+                    msg = '{0},{1},{2}'.format(self.md5_hash, self.cur_work[addr], self.client_length)
                     print('sent {addr} msg: {msg}'.format(addr=addr, msg=msg))
                     conn.send(msg.encode())
 
@@ -110,14 +137,17 @@ class Server:
                         break
 
             except:
-                print("connection {addr} closed".format(addr=addr))
-                conn.close()
-                self.queue.append(cur_work)
+                try:
+                    self.queue.append(self.cur_work[addr])
+                    self.close_conn(addr)
+                except:
+                    pass
+
                 break
 
 
 def main():
-    server = Server(str(md5("catwalk".encode()).hexdigest()), 5, 7)
+    server = Server(str(md5("hello".encode()).hexdigest()), 3, 5)
     print(server.mainloop())
 
 
