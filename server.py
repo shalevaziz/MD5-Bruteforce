@@ -3,6 +3,7 @@ import time
 from threading import Thread
 from hashlib import md5
 from pygame import mixer
+from logger import Logger
 # 10.30.56.225
 # 25565
 def get_prefix(length):
@@ -23,7 +24,7 @@ def get_prefix(length):
 
 
 class Server:
-    def __init__(self, md5_hash, client_length=5, total_length=8, ip = '0.0.0.0', port = 25565):
+    def __init__(self, md5_hash, client_length=5, total_length=8, ip = '0.0.0.0', port = 25565, debugging_mode = False):
         self.queue = []
         self.client_length = client_length
         self.total_length = total_length
@@ -39,6 +40,7 @@ class Server:
         self.threads = {}
         self.ip = ip
         self.port = port
+        self.logger = Logger(debugging_mode)
 
 
     def mainloop(self):
@@ -46,10 +48,11 @@ class Server:
         server_soc.setblocking(False)
         server_soc.bind((self.ip, self.port))
         server_soc.listen(2)
-        print("Server started")
+        self.logger.log_info('server started')
         while not self.found:
             try:
                 cli_soc, addr = server_soc.accept()
+                self.logger.log_info('client connected: {addr}'.format(addr=addr))
                 self.connections[addr] = cli_soc
                 self.addresses.append(addr)
                 self.last_seen[addr] = time.time()
@@ -71,8 +74,12 @@ class Server:
 
         for soc in self.connections.values():
             soc.close()
+        
+        self.logger.log_info('closed all connections')
 
         server_soc.close()
+        self.logger.log_info('server closed')
+
         return self.passwd
 
     def playsound(self):
@@ -83,7 +90,8 @@ class Server:
         time.sleep(47)
 
     def close_conn(self, addr):
-        print("connection {addr} closed".format(addr=addr))
+        if not self.found:
+            self.logger.log_warning("connection {addr} forcibly closed".format(addr=addr))
         self.disconnected.append(addr)
         self.connections[addr].close()
         del self.connections[addr]
@@ -117,7 +125,7 @@ class Server:
                 msg = conn.recv(4096).decode()
                 self.last_seen[addr] = time.time()
                 if msg == "ready":
-                    print("Client {addr} ready".format(addr=addr))
+                    self.logger.log_debug("Client {addr} ready".format(addr=addr))
                     while self.queue == []:
                         try:
                             self.queue.append(next(self.prefix_gen))
@@ -126,7 +134,7 @@ class Server:
 
                     self.cur_work[addr] = self.queue.pop()
                     msg = '{0},{1},{2}'.format(self.md5_hash, self.cur_work[addr], self.client_length)
-                    print('sent {addr} msg: {msg}'.format(addr=addr, msg=msg))
+                    self.logger.log_debug('sent {addr} msg: {msg}'.format(addr=addr, msg=msg))
                     conn.send(msg.encode())
 
                 elif msg[:5] == "found":
@@ -134,15 +142,15 @@ class Server:
                     if str(md5(passwd.encode()).hexdigest()) == self.md5_hash:
                         self.passwd = passwd
                         self.found = True
+                        self.logger.log_info('{addr} found password: {password}'.format(addr = addr, password=self.passwd))
                         break
-
+                    else:
+                        self.logger.log_warning('{addr} sent wrong password'.format(addr=addr))
+                        
             except:
-                try:
-                    self.queue.append(self.cur_work[addr])
-                    self.close_conn(addr)
-                except:
-                    pass
-
+                self.queue.append(self.cur_work[addr])
+                self.close_conn(addr)
+                
                 break
 
 
