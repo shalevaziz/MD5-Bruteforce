@@ -1,6 +1,6 @@
 from socket import *
 import time
-from threading import Thread
+from threading import Thread, Lock
 from hashlib import md5
 from pygame import mixer
 from logger import Logger
@@ -41,6 +41,7 @@ class Server:
         self.ip = ip
         self.port = port
         self.logger = Logger(debugging_mode)
+        self.lock = Lock()
 
 
     def mainloop(self):
@@ -126,13 +127,16 @@ class Server:
                 self.last_seen[addr] = time.time()
                 if msg == "ready":
                     self.logger.log_debug("Client {addr} ready".format(addr=addr))
-                    while self.queue == []:
-                        try:
-                            self.queue.append(next(self.prefix_gen))
-                        except:
-                            time.sleep(0.001)
 
+                    self.lock.acquire()
+                    self.logger.log_debug("Client {addr} acquired mutex".format(addr=addr))
+
+                    if self.queue == []:
+                        self.queue.append(next(self.prefix_gen))
                     self.cur_work[addr] = self.queue.pop()
+                    self.lock.release()
+                    self.logger.log_debug("Client {addr} released mutex".format(addr=addr))
+
                     msg = '{0},{1},{2}'.format(self.md5_hash, self.cur_work[addr], self.client_length)
                     self.logger.log_debug('sent {addr} msg: {msg}'.format(addr=addr, msg=msg))
                     conn.send(msg.encode())
